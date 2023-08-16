@@ -145,7 +145,7 @@ class CameraFeed(Thread):
             else:
                 app.name.config(text = "No Camera Found")   # display message and image if no camera found
                 img = (Image.open("no-video.png"))
-                img = img.resize((300,300), Image.Resampling.LANCZOS)
+                img = img.resize((300,300), Image.LANCZOS)
                 img = ImageTk.PhotoImage(img)
                 app.imageLabel.config(image = img)
                 app.imageLabel.image = img
@@ -158,7 +158,7 @@ class App(tk.Tk):
         #self.attributes('-topmost', 1)         # optionally keep window always in foreground
         #self.attributes('-fullscreen', True)   # optionally set window to fullscreen
        
-        #self.iconbitmap("C:\\Users\\User\\Downloads\\QR_code_reader\\qr_code.ico")
+        self.iconbitmap("qr-code.ico.ico")
                               
         window_width = 1280                     # define window size
         window_height = 720
@@ -183,7 +183,7 @@ class App(tk.Tk):
     def create_window(self):
         standardFont = font.nametofont("TkDefaultFont")
 
-        self.programName = ttk.Label(self, text = "Conference Enrolment", font = (standardFont, 40))
+        self.programName = ttk.Label(self, text = "Conference Enrollment", foreground =("white"),background=("#1b7a5a"),padding=(400,20),font = (standardFont, 30),justify=('left')) # program name
         self.name = ttk.Label(self, font = (standardFont, 20))  # display the scanned name
         self.indicator = ttk.Label(self)    # image if enrolment was successful or not
         self.info = ttk.Label(self, text = "", font = (standardFont, 20))   # text if enrolment was successful or not
@@ -191,9 +191,10 @@ class App(tk.Tk):
         self.imageLabel = ttk.Label(self)   # place for the camera image
         self.time = ttk.Label(self, text = "", font = (standardFont, 20))   # current time
         self.selected_entry = tk.StringVar()
-        self.selector = ttk.Combobox(self, textvariable=self.selected_entry, state = 'readonly')    # session selector
-        self.selector['values'] = ['session 1', 'session 2', 'session 3']   # custom sessions can be entered here
-        self.selector.current(0)    # make the first entry the default one
+        self.selector = ttk.Combobox(self, textvariable=self.selected_entry, state='readonly')  # session selector
+        self.selector['values'] = ['session 1','session 2','session 3']  # custom sessions can be entered here
+        self.selector.current(0)  # make the first entry the default one
+       
 
         # place all GUI elements on the grid layout
         self.programName.grid(column=0, row=0, columnspan=3, padx=15, pady=15)
