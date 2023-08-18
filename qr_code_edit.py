@@ -10,12 +10,15 @@ import datetime
 from threading import Thread
 import owncloud
 import pandas as pd
-import openpyxl
 from excel_writer import ExcelWriter
 class CameraFeed(Thread):
+    input_file_path : str
+    output_file_path : str
     def __init__(self):
         super().__init__()
-        self.excelWriter = ExcelWriter()
+        self.input_file_path = "Sessions.xlsx"
+        self.output_file_path = "Main file.xlsx"
+        self.excelWriter = ExcelWriter(self.input_file_path, self.output_file_path)
         self.cam = cv.VideoCapture(0)   # change the camera port
         self.oc = owncloud.Client.from_public_link('https://tuc.cloud/index.php/s/areq9npZmFrsara', folder_password = "nnxoP5Y4BR")  # connect to the cloud
 
@@ -67,11 +70,9 @@ class CameraFeed(Thread):
         app.imageLabel.image = img
 
     def appendQRData(self, value):
-        file_name = "Main file.xlsx"  # get the filename from the selected session entry
-        
-        self.downloadRemoteFile(file_name)
-        self.append_to_file(value, file_name)
-        self.upload_to_the_cloud(file_name)
+        self.downloadRemoteFile(self.output_file_path)
+        self.append_to_file(value, self.output_file_path)
+        self.upload_to_the_cloud(self.output_file_path)
         time.sleep(3)
 
     def tellNoQRC(self):
@@ -124,7 +125,7 @@ class App(tk.Tk):
         self.columnconfigure(2, weight = 5)
 
         self.camera_thread = CameraFeed()
-        self.camera_thread.downloadRemoteFile("Sessions.xlsx")
+        self.camera_thread.downloadRemoteFile(self.camera_thread.input_file_path)
         self.camera_thread.daemon = True    # necessary to stop the thread when exiting the program
         self.create_window()        # create the GUI window
         self.camera_thread.start()  # start the camera thread
@@ -141,13 +142,13 @@ class App(tk.Tk):
         self.time = ttk.Label(self, text = "", font = (standardFont, 20))   # current time
         self.selected_entry = tk.StringVar()
         self.selector = ttk.Combobox(self, textvariable=self.selected_entry, state='readonly')  # session selector
-        self.selector['values'] = ['Day 1','Day 2','Day 3']  # custom sessions can be entered here
+        self.selector['values'] = self.camera_thread.excelWriter.get_sheet_names()  # custom sessions can be entered here
+        print(self.selector['values'])
         self.selector.current(0)  # make the first entry the default one
         self.selector.bind("<<ComboboxSelected>>", self.on_combobox_select)
         # Adding a sub OptionMenu
         self.sub_session_var = tk.StringVar()
-        # self.sub_selector = ttk.OptionMenu(self, self.sub_session_var, direction=('right'), *self.get_sub_sessions(self.selector.get()))
-        self.sub_selector = ttk.OptionMenu(self, self.sub_session_var, *self.get_sub_sessions(self.selector.get()))
+        self.sub_selector = ttk.OptionMenu(self, self.sub_session_var, *self.camera_thread.excelWriter.get_sessions(self.selector.get()))
         
         # place all GUI elements on the grid layout
         self.programName.grid(column=0, row=0, columnspan=3, padx=15, pady=15, sticky=tk.W)
@@ -159,25 +160,16 @@ class App(tk.Tk):
         self.time.grid(column=2, row=5, padx=15, pady=15, sticky=tk.W)
         self.selector.grid(column=2, row=5, padx=30, pady=15, sticky=tk.E)
         self.sub_selector.grid(column=2, row=6, padx=30, pady=15, sticky=tk.E)
-    # Return sub-session values based on the selected main session    
-    def get_sub_sessions(self, main_session):
-         if main_session == 'Day 1':
-            return ['Opening 1', 'Discussion 1A', 'Discussion 1B']
-         elif main_session == 'Day 2':
-            return ['Opening 2', 'Discussion 2A', 'Discussion 2B']
-         elif main_session == 'Day 3':
-            return ['Opening 3', 'Discussion 3A', 'Discussion 3B']
         
     def on_combobox_select(self, event):
         # Get the selected option
         selected_day = self.selector.get()
         print("Selected Option:", selected_day)
 
-        new_options = self.get_sub_sessions(selected_day)
+        new_options = self.camera_thread.excelWriter.get_sessions(selected_day)
         self.update_option_menu(new_options)
         self.sub_session_var.set(new_options[0])
         
-
     def update_option_menu(self, options):
         # Access the menu of the OptionMenu widget
         menu = self.sub_selector["menu"]
