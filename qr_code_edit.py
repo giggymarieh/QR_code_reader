@@ -14,10 +14,11 @@ from excel_writer import ExcelWriter
 class CameraFeed(Thread):
     input_file_path : str
     output_file_path : str
-    def __init__(self):
+    def __init__(self, width):
         super().__init__()
         self.input_file_path = "Sessions.xlsx"
         self.output_file_path = "Main file.xlsx"
+        self.finalWidth = width
         self.excelWriter = ExcelWriter(self.input_file_path, self.output_file_path)
         self.cam = cv.VideoCapture(0)   # change the camera port
         self.oc = owncloud.Client.from_public_link('https://tuc.cloud/index.php/s/areq9npZmFrsara', folder_password = "nnxoP5Y4BR")  # connect to the cloud
@@ -42,12 +43,13 @@ class CameraFeed(Thread):
 
                 # Calculate the aspect ratio of the image
                 aspect_ratio = img.height / img.width
+                new_width = self.finalWidth //4
                 
                 # Calculate the new dimensions
-                finalWidth = 350
-                finalHeight = int(finalWidth * aspect_ratio)
+                #finalWidth = self.width
+                finalHeight = int(new_width * aspect_ratio)
                 
-                img = img.resize((finalWidth, finalHeight), Image.LANCZOS)
+                img = img.resize((new_width, finalHeight), Image.LANCZOS)
                 img = ImageTk.PhotoImage(img)
                 app.imageLabel.config(image = img)
                 app.imageLabel.image = img
@@ -64,12 +66,13 @@ class CameraFeed(Thread):
     def tellNoCameraFound(self):
         app.name.config(text = "No Camera Found")   # display message and image if no camera found
         img = (Image.open("no-video.png"))
-        img = img.resize((300,300), Image.LANCZOS)
+        #img = img.resize((300,300), Image.LANCZOS)
         img = ImageTk.PhotoImage(img)
         app.imageLabel.config(image = img)
         app.imageLabel.image = img
 
     def appendQRData(self, value):
+        app.name.config(text = "QR Code Found")
         self.downloadRemoteFile(self.output_file_path)
         self.append_to_file(value, self.output_file_path)
         self.upload_to_the_cloud(self.output_file_path)
@@ -109,22 +112,22 @@ class App(tk.Tk):
        
         # self.iconbitmap("qr-code.ico.ico")
                               
-        window_width = 1280                     # define window size
-        window_height = 500
+        self.window_width = 1280                     # define window size
+        self.window_height = 500
 
         screen_width = self.winfo_screenwidth()     # determine screen size
         screen_height = self.winfo_screenheight()
 
-        center_x = int(screen_width/2 - window_width / 2)   # determine the center of the screen
-        center_y = int(screen_height/2 - window_height / 2)
+        center_x = int(screen_width/2 - self.window_width / 2)   # determine the center of the screen
+        center_y = int(screen_height/2 - self.window_height / 2)
 
-        self.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')  # center the window on the screen
+        self.geometry(f'{self.window_width}x{self.window_height}+{center_x}+{center_y}')  # center the window on the screen
 
         self.columnconfigure(0, weight = 5) # set the size ratio of the different columns
         self.columnconfigure(1, weight = 1)
         self.columnconfigure(2, weight = 5)
 
-        self.camera_thread = CameraFeed()
+        self.camera_thread = CameraFeed(self.window_width)
         self.camera_thread.downloadRemoteFile(self.camera_thread.input_file_path)
         self.camera_thread.daemon = True    # necessary to stop the thread when exiting the program
         self.create_window()        # create the GUI window
@@ -133,12 +136,12 @@ class App(tk.Tk):
     def create_window(self):
         standardFont = font.nametofont("TkDefaultFont")
 
-        self.programName = ttk.Label(self, text = "Conference Enrollment", foreground =("white"),background=("#1b7a5a"),padding=(400,20),font = (standardFont, 30),justify=('left')) # program name
+        self.programName = ttk.Label(self, text = "Conference Enrollment", foreground =("black"),font = (standardFont, 30),justify=('center')) # program name
         self.name = ttk.Label(self, font = (standardFont, 20))  # display the scanned name
         self.indicator = ttk.Label(self)    # image if enrolment was successful or not
         self.info = ttk.Label(self, text = "", font = (standardFont, 20))   # text if enrolment was successful or not
         self.cloudInfo = ttk.Label(self, text = "", font = (standardFont, 20)) # text for upload status
-        self.imageLabel = tk.Label(self, width=200, height=200)   # place for the camera image
+        self.imageLabel = tk.Label(self)   # place for the camera image
         self.time = ttk.Label(self, text = "", font = (standardFont, 20))   # current time
         self.selected_entry = tk.StringVar()
         self.selector = ttk.Combobox(self, textvariable=self.selected_entry, state='readonly')  # session selector
@@ -151,15 +154,15 @@ class App(tk.Tk):
         self.sub_selector = ttk.OptionMenu(self, self.sub_session_var, *self.camera_thread.excelWriter.get_sessions(self.selector.get()))
         
         # place all GUI elements on the grid layout
-        self.programName.grid(column=0, row=0, columnspan=3, padx=15, pady=15, sticky=tk.W)
-        self.name.grid(column=2, row=2, sticky=tk.W)
-        self.indicator.grid(column=1, row=3, padx=15, pady=15, sticky=tk.E)
-        self.info.grid(column=2, row=3, sticky=tk.W)
-        self.cloudInfo.grid(column=2, row=4, sticky=tk.W)
-        self.imageLabel.grid(column=0, row=1, rowspan=5, padx=15, pady=15)
-        self.time.grid(column=2, row=5, padx=15, pady=15, sticky=tk.W)
-        self.selector.grid(column=2, row=5, padx=30, pady=15, sticky=tk.E)
-        self.sub_selector.grid(column=2, row=6, padx=30, pady=15, sticky=tk.E)
+        self.programName.grid(column=0, row=0, columnspan=3, padx=15, pady=15)
+        self.name.grid(column=2, row=2)
+        self.indicator.grid(column=1, row=3, padx=15, pady=15)
+        self.info.grid(column=2, row=3)
+        self.cloudInfo.grid(column=2, row=4)
+        self.imageLabel.grid(column=0, row=1, rowspan=4, padx=15, pady=15)
+        self.time.grid(column=0, row=5, padx=15, pady=15)
+        self.selector.grid(column=2, row=5, padx=30, pady=15)
+        self.sub_selector.grid(column=2, row=6, padx=30, pady=15)
         
     def on_combobox_select(self, event):
         # Get the selected option
