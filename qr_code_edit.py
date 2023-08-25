@@ -91,7 +91,7 @@ class CameraFeed(Thread):
             app.cloudInfo.config(text = "saved locally")
 
     def append_to_file(self, value: str, saveFile: str):
-        self.excelWriter.append_row_to_excel(saveFile, value, str(datetime.datetime.now()), str(app.selected_entry.get()))
+        self.excelWriter.append_row_to_excel(value, str(datetime.datetime.now()), str(app.selected_entry.get()))
         # TODO: check if the row has been really appended
         app.statusMessage("success")
     
@@ -107,7 +107,7 @@ class App(tk.Tk):
         #self.attributes('-topmost', 1)         # optionally keep window always in foreground
         #self.attributes('-fullscreen', True)   # optionally set window to fullscreen
        
-        self.iconbitmap("qr-code.ico.ico")
+        # self.iconbitmap("qr-code.ico.ico")
                               
         window_width = 1280                     # define window size
         window_height = 500
