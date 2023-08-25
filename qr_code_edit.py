@@ -11,100 +11,16 @@ from threading import Thread
 import owncloud
 import pandas as pd
 from excel_writer import ExcelWriter
-class CameraFeed(Thread):
-    input_file_path : str
-    output_file_path : str
-    def __init__(self, width):
-        super().__init__()
-        self.input_file_path = "Sessions.xlsx"
-        self.output_file_path = "Main file.xlsx"
-        self.finalWidth = width
-        self.excelWriter = ExcelWriter(self.input_file_path, self.output_file_path)
-        self.cam = cv.VideoCapture(0)   # change the camera port
-        self.oc = owncloud.Client.from_public_link('https://tuc.cloud/index.php/s/areq9npZmFrsara', folder_password = "nnxoP5Y4BR")  # connect to the cloud
+from camera_feed import CameraFeed
 
-    def QR_read(self, image):
-        try:
-            detect = cv.QRCodeDetector()
-            value, points, straight_qrcode = detect.detectAndDecode(image)
-            return value, points
-        except:
-            return None
-
-    def run(self): 
-        while(True):
-            camera_is_found, image = self.cam.read() # read the camera image
-            currentTime = datetime.datetime.now()
-            if camera_is_found:
-                value, points = self.QR_read(image)
-
-                img = cv.cvtColor(image, cv.COLOR_BGR2RGB)
-                img = Image.fromarray(img)
-
-                # Calculate the aspect ratio of the image
-                aspect_ratio = img.height / img.width
-                new_width = self.finalWidth //4
-                
-                # Calculate the new dimensions
-                #finalWidth = self.width
-                finalHeight = int(new_width * aspect_ratio)
-                
-                img = img.resize((new_width, finalHeight), Image.LANCZOS)
-                img = ImageTk.PhotoImage(img)
-                app.imageLabel.config(image = img)
-                app.imageLabel.image = img
-
-                app.time.config(text = currentTime.strftime('%d.%m.%Y, %H:%M'))
-
-                if points is None or value == "":   # no QR code detected
-                    self.tellNoQRC()
-                else:   # QR code detected
-                    self.appendQRData(value)
-            else:
-                self.tellNoCameraFound()
-
-    def tellNoCameraFound(self):
-        app.name.config(text = "No Camera Found")   # display message and image if no camera found
-        img = (Image.open("no-video.png"))
-        #img = img.resize((300,300), Image.LANCZOS)
-        img = ImageTk.PhotoImage(img)
-        app.imageLabel.config(image = img)
-        app.imageLabel.image = img
-
-    def appendQRData(self, value):
-        app.name.config(text = "QR Code Found")
-        self.downloadRemoteFile(self.output_file_path)
-        self.append_to_file(value, self.output_file_path)
-        self.upload_to_the_cloud(self.output_file_path)
-        time.sleep(3)
-
-    def tellNoQRC(self):
-        app.name.config(text = "No QR Code Found")
-        app.info.config(text = "")
-        app.cloudInfo.config(text = "")
-        app.indicator.config(image = '')
-        app.indicator.image = ''
-
-    def upload_to_the_cloud(self, file_name):
-        try:
-            self.oc.drop_file(file_name)  # upload file to cloud
-            os.remove(file_name)     # delete local file when upload successful
-            app.cloudInfo.config(text = "saved online")
-        except:
-            app.cloudInfo.config(text = "saved locally")
-
-    def append_to_file(self, value: str, saveFile: str):
-        self.excelWriter.append_row_to_excel(value, str(datetime.datetime.now()), str(app.selected_entry.get()))
-        # TODO: check if the row has been really appended
-        app.statusMessage("success")
-    
-    def downloadRemoteFile(self, saveFile: str):
-        self.oc.get_file(saveFile, saveFile) # download remote file
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        
+        self.oc = owncloud.Client.from_public_link('https://tuc.cloud/index.php/s/areq9npZmFrsara', folder_password = "nnxoP5Y4BR")  # connect to the cloud
+        self.input_file_path = "Sessions.xlsx"
+        self.output_file_path = "Main file.xlsx"
+        self.excelWriter = ExcelWriter(self.input_file_path, self.output_file_path)
         
         self.title("QR-Code Scanner")
         #self.attributes('-topmost', 1)         # optionally keep window always in foreground
@@ -127,11 +43,45 @@ class App(tk.Tk):
         self.columnconfigure(1, weight = 1)
         self.columnconfigure(2, weight = 5)
 
-        self.camera_thread = CameraFeed(self.window_width)
-        self.camera_thread.downloadRemoteFile(self.camera_thread.input_file_path)
-        self.camera_thread.daemon = True    # necessary to stop the thread when exiting the program
+        self.cameraFeed = CameraFeed()
+        self.downloadRemoteFile(self.input_file_path)
+        #self.camera_thread.daemon = True    # necessary to stop the thread when exiting the program
         self.create_window()        # create the GUI window
-        self.camera_thread.start()  # start the camera thread
+        self.cameraThread = Thread(target=self.main)
+        self.cameraThread.start()
+        #self.main()
+
+    def main(self):
+        while(True):
+            camera_is_found, image = self.cameraFeed.get_image()  # start the camera thread
+            currentTime = datetime.datetime.now()
+            if camera_is_found:
+                value, points = self.QR_read(image)
+
+                img = cv.cvtColor(image, cv.COLOR_BGR2RGB)
+                img = Image.fromarray(img)
+
+                # Calculate the aspect ratio of the image
+                aspect_ratio = img.height / img.width
+                new_width = self.window_width //4
+                
+                # Calculate the new dimensions
+                #finalWidth = self.width
+                finalHeight = int(new_width * aspect_ratio)
+                
+                img = img.resize((new_width, finalHeight), Image.LANCZOS)
+                img = ImageTk.PhotoImage(img)
+                self.imageLabel.config(image = img)
+                self.imageLabel.image = img
+
+                self.time.config(text = currentTime.strftime('%d.%m.%Y, %H:%M'))
+
+                if points is None or value == "":   # no QR code detected
+                    self.tellNoQRC()
+                else:   # QR code detected
+                    self.appendQRData(value)
+            else:
+                self.tellNoCameraFound()
 
     def create_window(self):
         standardFont = font.nametofont("TkDefaultFont")
@@ -145,13 +95,13 @@ class App(tk.Tk):
         self.time = ttk.Label(self, text = "", font = (standardFont, 20))   # current time
         self.selected_entry = tk.StringVar()
         self.selector = ttk.Combobox(self, textvariable=self.selected_entry, state='readonly')  # session selector
-        self.selector['values'] = self.camera_thread.excelWriter.get_sheet_names()  # custom sessions can be entered here
+        self.selector['values'] = self.excelWriter.get_sheet_names()  # custom sessions can be entered here
         print(self.selector['values'])
         self.selector.current(0)  # make the first entry the default one
         self.selector.bind("<<ComboboxSelected>>", self.on_combobox_select)
         # Adding a sub OptionMenu
         self.sub_session_var = tk.StringVar()
-        self.sub_selector = ttk.OptionMenu(self, self.sub_session_var, *self.camera_thread.excelWriter.get_sessions(self.selector.get()))
+        self.sub_selector = ttk.OptionMenu(self, self.sub_session_var, *self.excelWriter.get_sessions(self.selector.get()))
         
         # place all GUI elements on the grid layout
         self.programName.grid(column=0, row=0, columnspan=3, padx=15, pady=15)
@@ -169,7 +119,7 @@ class App(tk.Tk):
         selected_day = self.selector.get()
         print("Selected Option:", selected_day)
 
-        new_options = self.camera_thread.excelWriter.get_sessions(selected_day)
+        new_options = self.excelWriter.get_sessions(selected_day)
         self.update_option_menu(new_options)
         self.sub_session_var.set(new_options[0])
         
@@ -182,7 +132,6 @@ class App(tk.Tk):
         for option in options:
             menu.add_command(label=option, command=lambda value=option: self.sub_session_var.set(value))
 
-
     def statusMessage(self, status):    # display status message + image
         if status == "file":
             message = "can't write file"
@@ -194,6 +143,52 @@ class App(tk.Tk):
         newImg = ImageTk.PhotoImage((Image.open(statusImage)).resize((32,32), Image.Resampling.LANCZOS))
         self.indicator.config(image = newImg)
         self.indicator.image = newImg
+
+    def tellNoCameraFound(self):
+        self.name.config(text = "No Camera Found")   # display message and image if no camera found
+        img = (Image.open("no-video.png"))
+        #img = img.resize((300,300), Image.LANCZOS)
+        img = ImageTk.PhotoImage(img)
+        self.imageLabel.config(image = img)
+        self.imageLabel.image = img
+
+    def appendQRData(self, value):
+        self.name.config(text = "QR Code Found")
+        self.downloadRemoteFile(self.output_file_path)
+        self.append_to_file(value, self.output_file_path)
+        self.upload_to_the_cloud(self.output_file_path)
+        time.sleep(3)
+
+    def tellNoQRC(self):
+        self.name.config(text = "No QR Code Found")
+        self.info.config(text = "")
+        self.cloudInfo.config(text = "")
+        self.indicator.config(image = '')
+        self.indicator.image = ''
+
+    def upload_to_the_cloud(self, file_name):
+        try:
+            self.oc.drop_file(file_name)  # upload file to cloud
+            os.remove(file_name)     # delete local file when upload successful
+            self.cloudInfo.config(text = "saved online")
+        except:
+            self.cloudInfo.config(text = "saved locally")
+
+    def append_to_file(self, value: str, saveFile: str):
+        self.excelWriter.append_row_to_excel(value, str(datetime.datetime.now()), str(self.selected_entry.get()))
+        # TODO: check if the row has been really appended
+        self.statusMessage("success")
+    
+    def downloadRemoteFile(self, saveFile: str):
+        self.oc.get_file(saveFile, saveFile) # download remote file
+
+    def QR_read(self, image):
+        try:
+            detect = cv.QRCodeDetector()
+            value, points, straight_qrcode = detect.detectAndDecode(image)
+            return value, points
+        except:
+            return None
 
 if __name__ == "__main__":  # lauch the main GUI loop
     app = App()
