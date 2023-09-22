@@ -1,15 +1,20 @@
 import openpyxl
 import pandas as pd
+import datetime
+import owncloud
+import os
 
-class ExcelWriter:
+class FileManager:
     workbook = openpyxl.Workbook()
     input_file_path : str
     output_file_path : str
     def __init__(self, input_file_path, output_file_path):
         self.input_file_path = input_file_path
         self.output_file_path = output_file_path
+        self.oc = owncloud.Client.from_public_link('https://tuc.cloud/index.php/s/nisTB2KdNHHzgGy', folder_password = "zbS6dXZPdH")  # connect to the cloud
 
-    def append_row_to_excel(self, value, timestamp, sheet_name):
+    def append_row_to_excel(self, value, sheet_name):
+        timestamp = str(datetime.datetime.now())
         try:
             # Load the existing Excel workbook if it exists
             workbook = openpyxl.load_workbook(self.output_file_path)
@@ -54,6 +59,24 @@ class ExcelWriter:
             wb.close()
             return sheet_names
         
+    def appendQRData(self, value, sheetName):
+        try:
+            self.downloadRemoteFile(self.output_file_path)
+        except:
+            return "Error Downloading File"
+        
+        try:
+            self.append_row_to_excel(value, sheetName)
+        except:
+            return "Error appending to File"
+        
+        try:
+            self.upload_to_the_cloud(self.output_file_path)
+            return "Saved on the cloud"
+        except:
+            return "Saved locally"
+
+
     def get_sessions(self, selected_sheet: str) -> list[str]:
         if selected_sheet:
             wb = openpyxl.load_workbook(self.input_file_path)
@@ -62,3 +85,10 @@ class ExcelWriter:
             row_values = [", ".join(map(str, row)) for row in rows]
             wb.close() 
             return row_values
+        
+    def downloadRemoteFile(self, saveFile: str):
+        self.oc.get_file(saveFile, saveFile) # download remote file
+    
+    def upload_to_the_cloud(self, file_name):
+        self.oc.drop_file(file_name)  # upload file to cloud
+        os.remove(file_name)     # delete local file when upload successful

@@ -1,5 +1,3 @@
-import os
-from os.path import exists
 import tkinter as tk
 from tkinter import ttk
 from tkinter import font
@@ -8,23 +6,21 @@ from PIL import Image,ImageTk
 import time
 import datetime
 from threading import Thread
-import owncloud
-import pandas as pd
-from excel_writer import ExcelWriter
+from file_manager import FileManager
 from camera_feed import CameraFeed
 
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.oc = owncloud.Client.from_public_link('https://tuc.cloud/index.php/s/areq9npZmFrsara', folder_password = "nnxoP5Y4BR")  # connect to the cloud
+        
         self.input_file_path = "Sessions.xlsx"
         self.output_file_path = "Main file.xlsx"
-        self.excelWriter = ExcelWriter(self.input_file_path, self.output_file_path)
+        self.fileManager = FileManager(self.input_file_path, self.output_file_path)
         
         self.title("QR-Code Scanner")
         #self.attributes('-topmost', 1)         # optionally keep window always in foreground
-        #self.attributes('-fullscreen', True)   # optionally set window to fullscreen
+        self.attributes('-fullscreen', True)   # optionally set window to fullscreen
        
         # self.iconbitmap("qr-code.ico.ico")
                               
@@ -42,17 +38,24 @@ class App(tk.Tk):
         self.columnconfigure(0, weight = 5) # set the size ratio of the different columns
         self.columnconfigure(1, weight = 1)
         self.columnconfigure(2, weight = 5)
+        self.bind("<Configure>", self.resize_elements)
 
         self.cameraFeed = CameraFeed()
-        self.downloadRemoteFile(self.input_file_path)
-        #self.camera_thread.daemon = True    # necessary to stop the thread when exiting the program
-        self.create_window()        # create the GUI window
+        self.fileManager.downloadRemoteFile(self.input_file_path)
+        #self.create_window()        # create the GUI window
+        self.guiThread = Thread(target=self.create_window)
+        self.guiThread.daemon = True    # necessary to stop the thread when exiting the program
+        self.guiThread.start()
         self.cameraThread = Thread(target=self.main)
+        self.cameraThread.daemon = True    # necessary to stop the thread when exiting the program
         self.cameraThread.start()
-        #self.main()
+    
+    
 
     def main(self):
+        lastRegisteredPerson: str = ""
         while(True):
+
             camera_is_found, image = self.cameraFeed.get_image()  # start the camera thread
             currentTime = datetime.datetime.now()
             if camera_is_found:
@@ -66,7 +69,6 @@ class App(tk.Tk):
                 new_width = self.window_width //4
                 
                 # Calculate the new dimensions
-                #finalWidth = self.width
                 finalHeight = int(new_width * aspect_ratio)
                 
                 img = img.resize((new_width, finalHeight), Image.LANCZOS)
@@ -74,14 +76,20 @@ class App(tk.Tk):
                 self.imageLabel.config(image = img)
                 self.imageLabel.image = img
 
-                self.time.config(text = currentTime.strftime('%d.%m.%Y, %H:%M'))
+                self.time.config(text = currentTime.strftime('%d.%m.%Y, %H:%M:%S'))
 
                 if points is None or value == "":   # no QR code detected
                     self.tellNoQRC()
+                elif value == lastRegisteredPerson:
+                    pass
                 else:   # QR code detected
-                    self.appendQRData(value)
+                    self.OnQRCodeDetected(value)
+                    lastRegisteredPerson = value
+                    self.lastRegisteredPerson.config(text = "Last registered participant:\n" + lastRegisteredPerson)
+                    
             else:
                 self.tellNoCameraFound()
+
 
     def create_window(self):
         standardFont = font.nametofont("TkDefaultFont")
@@ -92,16 +100,21 @@ class App(tk.Tk):
         self.info = ttk.Label(self, text = "", font = (standardFont, 20))   # text if enrolment was successful or not
         self.cloudInfo = ttk.Label(self, text = "", font = (standardFont, 20)) # text for upload status
         self.imageLabel = tk.Label(self)   # place for the camera image
+        self.imageLabel.config(width=self.window_width // 2, height=self.window_height // 2)
         self.time = ttk.Label(self, text = "", font = (standardFont, 20))   # current time
+        self.lastRegisteredPerson = ttk.Label(self, text = "", font = (standardFont, 20))
         self.selected_entry = tk.StringVar()
         self.selector = ttk.Combobox(self, textvariable=self.selected_entry, state='readonly')  # session selector
-        self.selector['values'] = self.excelWriter.get_sheet_names()  # custom sessions can be entered here
+        self.selector['values'] = self.fileManager.get_sheet_names()  # custom sessions can be entered here
         print(self.selector['values'])
         self.selector.current(0)  # make the first entry the default one
         self.selector.bind("<<ComboboxSelected>>", self.on_combobox_select)
+        self.selector.config(width=self.window_width // 20, height=self.window_height // 20)
         # Adding a sub OptionMenu
         self.sub_session_var = tk.StringVar()
-        self.sub_selector = ttk.OptionMenu(self, self.sub_session_var, *self.excelWriter.get_sessions(self.selector.get()))
+        self.sub_selector = ttk.OptionMenu(self, self.sub_session_var, *self.fileManager.get_sessions(self.selector.get()))
+        self.sub_selector.config(width=self.window_width // 20)
+        
         
         # place all GUI elements on the grid layout
         self.programName.grid(column=0, row=0, columnspan=3, padx=15, pady=15)
@@ -111,6 +124,7 @@ class App(tk.Tk):
         self.cloudInfo.grid(column=2, row=4)
         self.imageLabel.grid(column=0, row=1, rowspan=4, padx=15, pady=15)
         self.time.grid(column=0, row=5, padx=15, pady=15)
+        self.lastRegisteredPerson.grid(column=0, row=6, padx=15, pady=15)
         self.selector.grid(column=2, row=5, padx=30, pady=15)
         self.sub_selector.grid(column=2, row=6, padx=30, pady=15)
         
@@ -119,7 +133,7 @@ class App(tk.Tk):
         selected_day = self.selector.get()
         print("Selected Option:", selected_day)
 
-        new_options = self.excelWriter.get_sessions(selected_day)
+        new_options = self.fileManager.get_sessions(selected_day)
         self.update_option_menu(new_options)
         self.sub_session_var.set(new_options[0])
         
@@ -152,12 +166,12 @@ class App(tk.Tk):
         self.imageLabel.config(image = img)
         self.imageLabel.image = img
 
-    def appendQRData(self, value):
+    def OnQRCodeDetected(self, value):
         self.name.config(text = "QR Code Found")
-        self.downloadRemoteFile(self.output_file_path)
-        self.append_to_file(value, self.output_file_path)
-        self.upload_to_the_cloud(self.output_file_path)
-        time.sleep(3)
+        result = self.fileManager.appendQRData(value, str(self.selected_entry.get()))
+        self.cloudInfo.config(text = result)
+        self.statusMessage("success")
+        time.sleep(1)
 
     def tellNoQRC(self):
         self.name.config(text = "No QR Code Found")
@@ -165,22 +179,6 @@ class App(tk.Tk):
         self.cloudInfo.config(text = "")
         self.indicator.config(image = '')
         self.indicator.image = ''
-
-    def upload_to_the_cloud(self, file_name):
-        try:
-            self.oc.drop_file(file_name)  # upload file to cloud
-            os.remove(file_name)     # delete local file when upload successful
-            self.cloudInfo.config(text = "saved online")
-        except:
-            self.cloudInfo.config(text = "saved locally")
-
-    def append_to_file(self, value: str, saveFile: str):
-        self.excelWriter.append_row_to_excel(value, str(datetime.datetime.now()), str(self.selected_entry.get()))
-        # TODO: check if the row has been really appended
-        self.statusMessage("success")
-    
-    def downloadRemoteFile(self, saveFile: str):
-        self.oc.get_file(saveFile, saveFile) # download remote file
 
     def QR_read(self, image):
         try:
@@ -190,7 +188,16 @@ class App(tk.Tk):
         except:
             return None
 
+    def resize_elements(self,event):
+            new_width = event.width
+            new_height = event.height
+
+            # Calculate the new size for elements based on the window size
+            #self.selector.config(width=new_width // 20, height=new_height // 20)
+            #self.sub_selector.config(width=new_width // 10)
+
 if __name__ == "__main__":  # lauch the main GUI loop
     app = App()
+
     app.mainloop()
        
